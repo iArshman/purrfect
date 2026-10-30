@@ -265,53 +265,168 @@ class ConversationManager(
         val cm = instanceNonNull()
         val convUuid = conversationId.toSnapUUID().instanceNonNull()
 
-        val method = cm.javaClass.methods.firstOrNull { m ->
-            m.name.contains("retention", ignoreCase = true)
-        } ?: cm.javaClass.methods.firstOrNull { m ->
-            m.parameterCount == 3 &&
-            m.parameterTypes[0].name.contains("UUID") &&
-            m.parameterTypes[1].isEnum &&
-            m.parameterTypes[2].name.endsWith("Callback")
+        val allMethods = sequence {
+            var current: Class<*>? = cm.javaClass
+            while (current != null && current != Any::class.java && current != Object::class.java) {
+                yieldAll(current.declaredMethods.asSequence())
+                current = current.superclass
+            }
+        }.filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .distinctBy { "${it.name}(${it.parameterTypes.joinToString(",") { p -> p.name }})" }
+            .toList()
+
+        val candidateMethods = allMethods.filter { m ->
+            val n = m.name.lowercase()
+            val paramNames = m.parameterTypes.joinToString(",") { it.name.lowercase() }
+            (n.contains("retention") ||
+                n.contains("viewingpolicy") ||
+                n.contains("postopen") ||
+                paramNames.contains("retention") ||
+                paramNames.contains("viewingpolicy")) &&
+                m.parameterTypes.any { it.name.contains("UUID") } &&
+                m.parameterTypes.lastOrNull()?.name?.contains("Callback") == true
+        }.ifEmpty {
+            allMethods.filter { m ->
+                m.parameterCount >= 3 &&
+                    m.parameterTypes[0].name.contains("UUID") &&
+                    m.parameterTypes.last().name.endsWith("Callback") &&
+                    m.parameterTypes.any { it.isEnum && (it.name.contains("Retention", ignoreCase = true) || it.name.contains("Policy", ignoreCase = true) || it.name.contains("Mode", ignoreCase = true)) }
+            }
         }
 
-        if (method == null) {
-            context.log.warn("updateConversationRetentionPolicy: retention method not found on ConversationManager")
-            onError("Retention method not found")
+        if (candidateMethods.isEmpty()) {
+            val available = allMethods
+                .filter { it.parameterTypes.firstOrNull()?.name?.contains("UUID") == true }
+                .joinToString("; ") { "${it.name}(${it.parameterTypes.joinToString(",") { p -> p.simpleName }})" }
+            context.log.warn("[RexMods] No retention method found on ConversationManager. UUID methods: $available", "RexMods")
+            onError("No retention method found on ConversationManager")
             return
         }
 
-        val enumType = method.parameterTypes[1]
-        val enumConstants = enumType.enumConstants as? Array<out Enum<*>> ?: emptyArray()
-
-        val selectedPolicy = if (deleteAfterViewing) {
-            enumConstants.firstOrNull { constant ->
-                val name = constant.name.uppercase()
-                name.contains("VIEW") || name.contains("IMMEDIAT") || name.contains("ZERO") || name.contains("READ")
-            } ?: enumConstants.firstOrNull()
-        } else {
-            enumConstants.firstOrNull { constant ->
-                val name = constant.name.uppercase()
-                name.contains("24") || name.contains("TWENTY") || name.contains("HOUR")
-            } ?: enumConstants.lastOrNull()
+        fun selectEnumConstant(enumType: Class<*>, immediate: Boolean): Any? {
+            val constants = enumType.enumConstants as? Array<out Enum<*>> ?: return null
+            if (constants.isEmpty()) return null
+            val typeName = enumType.simpleName.lowercase()
+            return if (immediate) {
+                constants.firstOrNull { c ->
+                    val name = c.name.uppercase()
+                    name.contains("IMMEDIAT") ||
+                        name.contains("AFTER_VIEW") ||
+                        name.contains("DELETE") ||
+                        name.contains("ENVELOPE") ||
+                        name.contains("ZERO") ||
+                        name.contains("READ") ||
+                        (typeName.contains("postopen") && name == "ENVELOPE")
+                } ?: constants.firstOrNull { c ->
+                    !c.name.uppercase().contains("24") &&
+                        !c.name.uppercase().contains("TWENTY") &&
+                        !c.name.uppercase().contains("HOUR") &&
+                        !c.name.uppercase().contains("INFINITE")
+                } ?: constants.firstOrNull()
+            } else {
+                constants.firstOrNull { c ->
+                    val name = c.name.uppercase()
+                    name.contains("24") || name.contains("TWENTY") || name.contains("HOUR") || name.contains("DAY")
+                } ?: constants.lastOrNull()
+            }
         }
 
-        if (selectedPolicy == null) {
-            context.log.warn("updateConversationRetentionPolicy: enum constant not found in ${enumType.name}")
-            onError("Retention enum constant not found")
-            return
+        fun buildPolicyParameter(paramType: Class<*>, immediate: Boolean): Any? {
+            return when {
+                paramType.isInstance(convUuid) -> convUuid
+                paramType.isEnum -> selectEnumConstant(paramType, immediate)
+                paramType == Boolean::class.javaPrimitiveType || paramType == Boolean::class.javaObjectType -> {
+                    // In Djinni methods taking a boolean alongside retention, false = not infinite / immediate
+                    false
+                }
+                paramType == Long::class.javaPrimitiveType || paramType == Long::class.javaObjectType -> {
+                    if (immediate) 0L else 86400L
+                }
+                paramType == Int::class.javaPrimitiveType || paramType == Int::class.javaObjectType -> {
+                    if (immediate) 0 else 86400
+                }
+                else -> {
+                    // Construct Djinni data class (e.g., ConversationRetentionPolicy)
+                    runCatching {
+                        val ctor = paramType.declaredConstructors.firstOrNull() ?: return@runCatching null
+                        ctor.isAccessible = true
+                        val instance = CallbackBuilder.createEmptyObject(ctor) ?: return@runCatching null
+                        paramType.declaredFields.forEach { field ->
+                            field.isAccessible = true
+                            val fName = field.name.lowercase()
+                            val fType = field.type
+                            when {
+                                fType.isEnum -> field.set(instance, selectEnumConstant(fType, immediate))
+                                fType == Boolean::class.javaPrimitiveType || fType == Boolean::class.javaObjectType -> {
+                                    val value = when {
+                                        fName.contains("infinite") -> false
+                                        fName.contains("send") -> true
+                                        else -> immediate
+                                    }
+                                    field.set(instance, value)
+                                }
+                                fType == Long::class.javaPrimitiveType || fType == Long::class.javaObjectType -> {
+                                    field.set(instance, if (immediate) 0L else 86400L)
+                                }
+                                fType == Int::class.javaPrimitiveType || fType == Int::class.javaObjectType -> {
+                                    field.set(instance, if (immediate) 0 else 86400)
+                                }
+                            }
+                        }
+                        instance
+                    }.getOrNull()
+                }
+            }
         }
 
-        val callback = CallbackBuilder(getCallbackClass("Callback"))
-            .override("onSuccess") { onSuccess() }
-            .override("onError") { onError(it.arg<Any>(0).toString()) }
-            .build()
+        var invokedCount = 0
+        var succeeded = false
+        var lastError: String? = null
 
-        runCatching {
-            method.invoke(cm, convUuid, selectedPolicy, callback)
-            context.log.info("updateConversationRetentionPolicy invoked for $conversationId with $selectedPolicy")
-        }.onFailure {
-            context.log.error("Failed to invoke retention method ${method.name}", it)
-            onError(it.message ?: "Failed to invoke retention method")
+        candidateMethods.forEach { method ->
+            runCatching {
+                method.isAccessible = true
+                val callbackParamType = method.parameterTypes.last()
+                val callbackClass = runCatching { getCallbackClass("Callback") }.getOrDefault(callbackParamType)
+                val callback = CallbackBuilder(callbackClass)
+                    .override("onSuccess") {
+                        if (!succeeded) {
+                            succeeded = true
+                            context.log.info("[RexMods] Retention policy set to Delete After Viewing via ${method.name} for $conversationId", "RexMods")
+                            onSuccess()
+                        }
+                    }
+                    .override("onError") {
+                        val err = it.arg<Any>(0).toString()
+                        lastError = err
+                        context.log.warn("[RexMods] ${method.name} reported error for $conversationId: $err", "RexMods")
+                    }
+                    .build()
+
+                val args = method.parameterTypes.mapIndexed { idx, pType ->
+                    if (idx == method.parameterCount - 1) {
+                        callback
+                    } else {
+                        buildPolicyParameter(pType, deleteAfterViewing)
+                    }
+                }.toTypedArray()
+
+                if (args.any { it == null }) {
+                    context.log.warn("[RexMods] Skipping ${method.name}: could not build all arguments (${args.map { it?.javaClass?.simpleName }})", "RexMods")
+                    return@runCatching
+                }
+
+                invokedCount++
+                context.log.info("[RexMods] Invoking ${method.name}(${args.dropLast(1).joinToString(", ")}) for conv=$conversationId", "RexMods")
+                method.invoke(cm, *args)
+            }.onFailure { err ->
+                lastError = err.message ?: err.toString()
+                context.log.warn("[RexMods] Exception invoking ${method.name}: ${err.message}", "RexMods")
+            }
+        }
+
+        if (invokedCount == 0 && !succeeded) {
+            onError(lastError ?: "Could not invoke any retention policy method")
         }
     }
 }

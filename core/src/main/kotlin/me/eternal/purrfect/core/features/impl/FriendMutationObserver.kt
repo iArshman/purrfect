@@ -9,8 +9,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.google.gson.JsonObject
 import me.eternal.purrfect.common.data.FriendLinkType
 import me.eternal.purrfect.common.database.impl.FriendInfo
+import me.eternal.purrfect.core.event.events.impl.NativeUnaryCallEvent
 import me.eternal.purrfect.core.event.events.impl.NetworkApiRequestEvent
+import me.eternal.purrfect.core.event.events.impl.UnaryCallEvent
 import me.eternal.purrfect.core.features.Feature
+import me.eternal.purrfect.core.features.impl.messaging.AutoFriendShortcuts
 import me.eternal.purrfect.core.util.EvictingMap
 import java.io.InputStreamReader
 import java.util.Calendar
@@ -83,6 +86,21 @@ class FriendMutationObserver: Feature("FriendMutationObserver") {
 
     override fun init() {
         val config by context.config.messaging.friendMutationNotifier
+
+        context.event.subscribe(UnaryCallEvent::class) { event ->
+            val uriLower = event.uri.lowercase()
+            if (uriLower.contains("friend") || uriLower.contains("relationship")) {
+                AutoFriendShortcuts.onFriendGrpcCall(context, event.uri)
+            }
+        }
+
+        context.event.subscribe(NativeUnaryCallEvent::class) { event ->
+            val uriLower = event.uri.lowercase()
+            if (uriLower.contains("friend") || uriLower.contains("relationship")) {
+                AutoFriendShortcuts.onFriendGrpcCall(context, event.uri)
+            }
+        }
+
         context.event.subscribe(NetworkApiRequestEvent::class) { event ->
             if (!event.url.contains("ami/friends")) return@subscribe
             event.onSuccess { buffer ->
@@ -95,8 +113,9 @@ class FriendMutationObserver: Feature("FriendMutationObserver") {
                             addSourceCache[userId] = it
                         }
                         val username = friend.get("username")?.asString ?: friend.get("display")?.asString
-                        me.eternal.purrfect.core.features.impl.messaging.AutoFriendShortcuts.onFriendAdded(context, userId, username)
+                        AutoFriendShortcuts.onFriendAdded(context, userId, username, source = "ami/friends")
                     }
+                    AutoFriendShortcuts.scanForNewFriends(context, "ami/friends")
 
                     if (config.isEmpty()) return@runCatching
                     jsonObject.getAsJsonArray("friends")?.map { it.asJsonObject }?.forEach { friend ->

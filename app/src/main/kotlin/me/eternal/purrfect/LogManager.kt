@@ -210,6 +210,40 @@ class LogManager(
         newLogFile()
     }
 
+    fun getRexModsLogs(maxLines: Int = 250): List<LogLine> {
+        return synchronized(printLogLock) {
+            runCatching {
+                val files = logFolder.listFiles()
+                    ?.filter { it.isFile && it.name.endsWith(".log") }
+                    ?.sortedBy { it.lastModified() }
+                    .orEmpty()
+                val matches = mutableListOf<LogLine>()
+                for (file in files) {
+                    file.useLines(Charsets.UTF_8) { lines ->
+                        lines.forEach { rawLine ->
+                            val clean = rawLine.removePrefix("|").trimEnd()
+                            if (clean.isNotEmpty()) {
+                                val parsed = LogLine.fromString(clean)
+                                if (parsed != null && isRexModsLog(parsed)) {
+                                    matches.add(parsed)
+                                }
+                            }
+                        }
+                    }
+                }
+                if (matches.size > maxLines) matches.takeLast(maxLines) else matches
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    fun isRexModsLog(line: LogLine): Boolean {
+        return line.tag.equals("RexMods", ignoreCase = true) ||
+            line.message.contains("[RexMods]", ignoreCase = true) ||
+            line.message.contains("AutoFriendShortcuts", ignoreCase = true) ||
+            line.message.contains("AutoSendSnapToAll", ignoreCase = true) ||
+            line.message.contains("updateConversationRetention", ignoreCase = true)
+    }
+
     fun exportLogsToZip(outputStream: OutputStream) {
         exportLogsToZip(outputStream, null)
     }

@@ -277,11 +277,15 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
             event: SendMessageWithContentEvent,
             targetFriends: List<FriendInfo>,
             exemptUserIds: Set<String>,
+            extraGroupConversationIds: List<String> = emptyList(),
             messageContentFactory: () -> MessageContent
         ) {
-            val batchSize = context.config.messaging.sendSnapToAll.batchSize.get().coerceIn(1, 200)
-            val batchDelayMs = context.config.messaging.sendSnapToAll.batchDelayMs.get().coerceIn(0, 60000).toLong()
-            val initialConversations = event.destinations.conversations?.map { it.toString() } ?: emptyList()
+            val batchSize = context.config.rexMods.sendSnapToAll.batchSize.get().coerceIn(1, 200)
+            val batchDelayMs = context.config.rexMods.sendSnapToAll.batchDelayMs.get().coerceIn(0, 60000).toLong()
+            val initialConversations = (
+                (event.destinations.conversations?.map { it.toString() } ?: emptyList()) +
+                    extraGroupConversationIds
+                ).distinct()
             val originalCallback = event.adapter.args().getOrNull(2)
 
             val sendMessageCallbackClass = runCatching {
@@ -334,6 +338,10 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
                 val totalRecipients = allConversationIds.size
                 val totalBatches = batches.size
 
+                context.log.info(
+                    "[RexMods] Starting batch snap send to $totalRecipients recipients in $totalBatches batch(es) (batchSize=$batchSize)",
+                    "RexMods"
+                )
                 context.inAppOverlay.showStatusToast(
                     icon = Icons.Default.Send,
                     text = "Sending snap to $totalRecipients recipients in $totalBatches batch(es) of up to $batchSize..."
@@ -428,6 +436,8 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
                     "Sent to $sentRecipients/$totalRecipients friends ($failedBatches batch(es) failed)"
                 }
 
+                context.log.info("[RexMods] Batch send finished: $summaryText", "RexMods")
+
                 updateBatchNotification(
                     context = context,
                     title = "Auto Send to All Complete",
@@ -442,9 +452,8 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
             }
         }
 
-        fun shouldTriggerPrompt(context: ModContext, event: SendMessageWithContentEvent): Boolean {
-            val config = context.config.messaging.sendSnapToAll
-            if (config.globalState != true) return false
+        fun isEligibleSnapEvent(context: ModContext, event: SendMessageWithContentEvent): Boolean {
+            val config = context.config.rexMods.sendSnapToAll
             if (isInternalBatchSend.get() == true) return false
             if (event.destinations.stories?.isNotEmpty() == true && event.destinations.conversations?.isEmpty() == true) {
                 return false
@@ -462,11 +471,20 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
 
             val protoReader = ProtoReader(localMessageContent.content ?: return false)
             if (protoReader.contains(7)) return false // skip story replies
+            return true
+        }
+
+        fun shouldTriggerPrompt(context: ModContext, event: SendMessageWithContentEvent): Boolean {
+            val config = context.config.rexMods.sendSnapToAll
+            if (config.globalState != true) return false
+            if (!isEligibleSnapEvent(context, event)) return false
 
             val selectedConversations = event.destinations.conversations?.map { it.toString() } ?: return false
             if (selectedConversations.isEmpty()) return false
 
             val triggerMode = config.triggerMode.get()
+            if (triggerMode == "send_to_bar_only") return false
+
             val limitThreshold = config.limitThreshold.get().coerceIn(1, 200)
             if (triggerMode == "when_limit_reached" && selectedConversations.size < limitThreshold) {
                 return false
@@ -476,13 +494,39 @@ class AutoSendSnapToAll : Feature("Auto Send Snap To All") {
     }
 
     override fun init() {
-        val config = context.config.messaging.sendSnapToAll
-        if (config.globalState != true) return
+        val config = context.config.rexMods.sendSnapToAll
 
         // Subscribe at priority -50 so SendOverride (-100) runs first in ascending TreeMap order
         context.event.subscribe(SendMessageWithContentEvent::class, priority = -50) { event ->
             if (isInternalBatchSend.get() == true) return@subscribe
             if (consumeEventHandled(event)) return@subscribe
+
+            // 1. Check if user selected recipients via the Send-To Emoji & Select All Bar
+            if (AutoFriendShortcuts.hasPendingSendToSelection() && isEligibleSnapEvent(context, event)) {
+                val pending = AutoFriendShortcuts.consumePendingSendToSelection(context)
+                if (pending != null && (pending.selectedFriends.isNotEmpty() || pending.selectedGroupIds.isNotEmpty())) {
+                    event.canceled = true
+                    event.adapter.setResult(null)
+                    val originalMessageJson = context.gson.toJson(event.messageContent.instanceNonNull())
+                    context.log.info(
+                        "[RexMods] Intercepted direct snap send with Send-To Emoji Bar selection: ${pending.selectedFriends.size} friends, ${pending.selectedGroupIds.size} groups, ${pending.unselectedUserIds.size} unselected",
+                        "RexMods"
+                    )
+                    executeAutoBatchSend(
+                        context = context,
+                        event = event,
+                        targetFriends = pending.selectedFriends,
+                        exemptUserIds = pending.unselectedUserIds,
+                        extraGroupConversationIds = pending.selectedGroupIds,
+                        messageContentFactory = {
+                            cloneAndScrubMessageContent(context, originalMessageJson)
+                        }
+                    )
+                    return@subscribe
+                }
+            }
+
+            if (config.globalState != true) return@subscribe
             if (!shouldTriggerPrompt(context, event)) return@subscribe
 
             val selectedConversations = event.destinations.conversations?.map { it.toString() } ?: return@subscribe
@@ -598,60 +642,6 @@ fun SendToAllAndExemptSection(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (context.config.messaging.staticEmojiShortcutHeader.get()) {
-            StaticEmojiShortcutHeader(
-                context = context,
-                allFriends = allFriends,
-                selectedBucketIds = selectedBucketIds,
-                onBucketToggled = { bucket, isSelected ->
-                    val updatedBuckets = if (isSelected) {
-                        selectedBucketIds + bucket.id
-                    } else {
-                        selectedBucketIds - bucket.id
-                    }
-                    selectedBucketIds = updatedBuckets
-
-                    if (bucket.isStory) {
-                        context.inAppOverlay.showStatusToast(
-                            icon = Icons.Default.CheckCircle,
-                            text = if (isSelected) "🟣 Story recipient enabled" else "🟣 Story recipient disabled"
-                        )
-                        return@StaticEmojiShortcutHeader
-                    }
-
-                    if (bucket.isGroup) {
-                        context.inAppOverlay.showStatusToast(
-                            icon = Icons.Default.Groups,
-                            text = if (isSelected) "👥 Selected ${bucket.groupConversationIds.size} Groups" else "👥 Groups deselected"
-                        )
-                        return@StaticEmojiShortcutHeader
-                    }
-
-                    if (updatedBuckets.isEmpty()) {
-                        val saved = AutoSendSnapToAll.loadExemptUserIds(context)
-                        onExemptUserIdsChange(saved)
-                    } else {
-                        val bucketsList = AutoFriendShortcuts.buildShortcutBuckets(
-                            context,
-                            allFriends,
-                            context.config.messaging.shortcutFriendsPerList.get().coerceIn(5, 200)
-                        )
-                        val targetUserIds = bucketsList
-                            .filter { it.id in updatedBuckets }
-                            .flatMap { it.friends }
-                            .mapNotNull { it.userId }
-                            .toSet()
-
-                        val newExempt = allFriends.mapNotNull { it.userId }.filter { it !in targetUserIds }.toSet()
-                        onExemptUserIdsChange(newExempt)
-                        context.inAppOverlay.showStatusToast(
-                            icon = Icons.Default.CheckCircle,
-                            text = "${bucket.emoji} ${bucket.title} (${bucket.friends.size} Friends)"
-                        )
-                    }
-                }
-            )
-        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -671,19 +661,20 @@ fun SendToAllAndExemptSection(
                     fontSize = 12.sp
                 )
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(skin.glowPrimary.copy(alpha = 0.14f))
-                    .border(1.dp, skin.glowPrimary.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "200 Bypass",
-                    color = skin.glowPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    onExemptUserIdsChange(emptySet())
+                    AutoSendSnapToAll.saveExemptUserIds(context, emptySet())
+                }) {
+                    Text("Select All", fontSize = 12.sp, color = skin.glowPrimary)
+                }
+                TextButton(onClick = {
+                    val allIds = eligibleFriends.mapNotNull { it.userId }.toSet()
+                    onExemptUserIdsChange(allIds)
+                    AutoSendSnapToAll.saveExemptUserIds(context, allIds)
+                }) {
+                    Text("Deselect All", fontSize = 12.sp, color = skin.textSecondary)
+                }
             }
         }
 
@@ -962,7 +953,7 @@ fun showSendToAllPromptDialog(
     onSendToAll: (targetFriends: List<FriendInfo>, exemptUserIds: Set<String>) -> Unit
 ) {
     val mainActivity = context.mainActivity ?: return
-    val config = context.config.messaging.sendSnapToAll
+    val config = context.config.rexMods.sendSnapToAll
     val batchSize = config.batchSize.get().coerceIn(1, 200)
 
     createComposeAlertDialog(mainActivity) { alertDialog ->

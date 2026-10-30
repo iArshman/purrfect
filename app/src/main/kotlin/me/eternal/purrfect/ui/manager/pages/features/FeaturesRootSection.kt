@@ -1,4 +1,4 @@
-﻿package me.eternal.purrfect.ui.manager.pages.features
+package me.eternal.purrfect.ui.manager.pages.features
 
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -3740,6 +3740,7 @@ class FeaturesRootSection : Routes.Route() {
         showInstagramMiscTools: Boolean = false,
         showInstagramDownloaderTools: Boolean = false,
         showInstagramEmojiFontTools: Boolean = false,
+        showRexModsTools: Boolean = false,
         onBack: (() -> Unit)? = null
     ) {
         val isAphelion = context.config.root.global.uiSettings.managerTheme.get() == "APHELION"
@@ -3922,6 +3923,14 @@ class FeaturesRootSection : Routes.Route() {
                         InstagramAdsAndLinksToolsCard(
                             refreshNonce = configRefreshNonce,
                             onConfigChanged = { configRefreshNonce++ }
+                        )
+                    }
+                }
+                if (showRexModsTools && !isActiveSearch) {
+                    item(key = "rex_mods_tools_and_logs") {
+                        RexModsToolsAndLogsCard(
+                            context = context,
+                            refreshNonce = configRefreshNonce
                         )
                     }
                 }
@@ -6716,6 +6725,7 @@ class FeaturesRootSection : Routes.Route() {
                 configContainer === context.config.root.instagram.downloader,
             showInstagramEmojiFontTools = context.isInstagramMode &&
                 configContainer === context.config.root.instagram.misc,
+            showRexModsTools = configContainer === context.config.root.rexMods,
             onBack = onBack
         )
     }

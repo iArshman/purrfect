@@ -2179,6 +2179,66 @@
                     }
                 }
             },
+            "rex_mods": {
+                "name": "RexMods",
+                "description": "Classic Emoji Chat Header, Send-To Emoji & Select All Shortcuts, Auto 50-Friend Lists, Auto Delete After Viewing & RexMods Logs",
+                "properties": {
+                    "classic_emoji_chat_header": {
+                        "name": "Classic Emoji Chat Homescreen Header",
+                        "description": "Replace Chat tab filter pills below the Account icon (All, Unread, Groups, Reply, Stories, Birthday, New Friends) with old-style static emojis (💬, 🟦, 👥, ↩️, 🟣, 🎂, 👶) plus numbered friend list shortcuts (1️⃣, 2️⃣...)"
+                    },
+                    "send_to_emoji_select_bar": {
+                        "name": "Send-To Emoji Shortcut & Select All Bar",
+                        "description": "Show Emoji Shortcut & ✅ Select All bar on the Send-To page so clicking an emoji or Select All auto-selects friends and lets you unselect specific people on direct snaps"
+                    },
+                    "static_emoji_shortcut_header": {
+                        "name": "Auto-Create 50-Friend Numbered Lists (1️⃣ 2️⃣ 3️⃣)",
+                        "description": "Automatically group friends into numbered emoji lists (1️⃣, 2️⃣, 3️⃣...) and auto-add newly added friends into the latest shortcut list"
+                    },
+                    "shortcut_friends_per_list": {
+                        "name": "Friends Per Numbered Shortcut List",
+                        "description": "Number of friends in each numbered emoji shortcut list (default: 50)"
+                    },
+                    "auto_delete_after_viewing_on_friend_add": {
+                        "name": "Auto Set Chat to Delete After Viewing on Friend Add",
+                        "description": "Automatically set conversation retention policy to Delete After Viewing whenever a friend is added or when opening a new friend's chat"
+                    },
+                    "send_snap_to_all": {
+                        "name": "Batch Send & 200-Limit Bypass Settings",
+                        "description": "Configure automatic 200-recipient batching and exemptions when sending snaps to all friends or numbered shortcut lists",
+                        "properties": {
+                            "trigger_mode": {
+                                "name": "Popup Trigger Mode",
+                                "description": "Use Send-To Bar Only (no popup on Send button) or show confirmation popup when sending"
+                            },
+                            "limit_threshold": {
+                                "name": "Recipient Limit Threshold",
+                                "description": "Minimum selected recipients before prompting when Trigger Mode is set to When Limit Reached (default: 200)"
+                            },
+                            "batch_size": {
+                                "name": "Batch Size (Max 200)",
+                                "description": "Maximum number of recipients sent per automatic batch (1 to 200)"
+                            },
+                            "batch_delay_ms": {
+                                "name": "Delay Between Batches (ms)",
+                                "description": "Delay in milliseconds between automatic 200-recipient batches"
+                            },
+                            "default_target_filter": {
+                                "name": "Default Target Filter",
+                                "description": "Default friend group selected when using Select All"
+                            },
+                            "include_camera_snaps": {
+                                "name": "Include Camera Snaps",
+                                "description": "Allow batch sending on direct camera Snaps"
+                            },
+                            "include_gallery_media": {
+                                "name": "Include Gallery / Override Snaps",
+                                "description": "Allow batch sending on gallery media or overridden Snaps"
+                            }
+                        }
+                    }
+                }
+            },
             "downloader": {
                 "name": "Downloader",
                 "description": "Download Snapchat Media",
@@ -4206,6 +4266,7 @@
                 "null": "Disabled"
             },
             "send_snap_to_all_trigger_mode": {
+                "send_to_bar_only": "Send-To Bar Only (No Extra Popup)",
                 "always_ask": "Always Ask on Snap Send",
                 "when_limit_reached": "When 200 Limit Reached"
             },

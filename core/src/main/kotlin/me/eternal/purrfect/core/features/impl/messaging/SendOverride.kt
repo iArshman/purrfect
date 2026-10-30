@@ -1084,16 +1084,6 @@ class SendOverride : Feature("Send Override") {
                                 var scheduleEnabled by remember { mutableStateOf(false) }
                                 var continuousSendEnabled by remember { mutableStateOf(false) }
                                 var continuousSendCount by remember { mutableStateOf("2") }
-                                val sendToAllConfig = context.config.messaging.sendSnapToAll
-                                var sendToAllEnabled by remember {
-                                    mutableStateOf(
-                                        sendToAllConfig.globalState == true &&
-                                            conversationIds.size >= sendToAllConfig.limitThreshold.get().coerceIn(1, 200)
-                                    )
-                                }
-                                val allMutualFriends = remember { AutoSendSnapToAll.loadAllMutualFriends(context) }
-                                var sendToAllTargetFilter by remember { mutableStateOf(sendToAllConfig.defaultTargetFilter.get()) }
-                                var sendToAllExemptIds by remember { mutableStateOf(AutoSendSnapToAll.loadExemptUserIds(context)) }
 
                                 Text(
                                     fontSize = 20.sp,
@@ -1454,40 +1444,6 @@ class SendOverride : Feature("Send Override") {
                             )
                         }
 
-                        if (sendToAllConfig.globalState == true) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    sendToAllEnabled = !sendToAllEnabled
-                                },
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = sendToAllEnabled,
-                                    onCheckedChange = {
-                                        sendToAllEnabled = it
-                                    }
-                                )
-                                Text(
-                                    text = "Send to All Friends & Exempt (Bypass 200 Limit)",
-                                    lineHeight = 15.sp,
-                                    fontWeight = if (sendToAllEnabled) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            }
-
-                            if (sendToAllEnabled) {
-                                SendToAllAndExemptSection(
-                                    context = context,
-                                    allFriends = allMutualFriends,
-                                    targetFilter = sendToAllTargetFilter,
-                                    onTargetFilterChange = { sendToAllTargetFilter = it },
-                                    exemptUserIds = sendToAllExemptIds,
-                                    onExemptUserIdsChange = { sendToAllExemptIds = it },
-                                    batchSize = sendToAllConfig.batchSize.get().coerceIn(1, 200)
-                                )
-                            }
-                        }
-
                         when (selectedType) {
                             "SNAP", "SAVEABLE_SNAP" -> {
                                 fun toggleSaveable() {
@@ -1586,23 +1542,6 @@ class SendOverride : Feature("Send Override") {
                                     return@Button
                                 }
                                 alertDialog.dismiss()
-                                if (sendToAllEnabled) {
-                                    val eligibleFriends = AutoSendSnapToAll.filterFriendsByMode(allMutualFriends, sendToAllTargetFilter)
-                                    val durationMs = if (finalSelectedType != "SAVEABLE_SNAP") convertDuration(customDuration) else null
-                                    AutoSendSnapToAll.executeAutoBatchSend(
-                                        context = context,
-                                        event = event,
-                                        targetFriends = eligibleFriends,
-                                        exemptUserIds = sendToAllExemptIds,
-                                        messageContentFactory = {
-                                            val contentCopy = createMessageContentFromOriginal()
-                                            val readerCopy = ProtoReader(contentCopy.content ?: ByteArray(0))
-                                            applyOverride(contentCopy, readerCopy, finalSelectedType, durationMs)
-                                            contentCopy
-                                        }
-                                    )
-                                    return@Button
-                                }
                                 if (disableSplitForCurrentSend && MediaFilePicker.hasOriginalUnsplitItem()) {
                                     MediaFilePicker.setQueuedOverrideType(finalSelectedType)
                                     if (!MediaFilePicker.sendOriginalUnsplitItem()) {

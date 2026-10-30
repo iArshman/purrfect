@@ -8,6 +8,7 @@ import me.eternal.purrfect.common.config.ConfigContainer
 import me.eternal.purrfect.common.config.FeatureNotice
 
 class RootConfig : ConfigContainer() {
+    val rexMods = container("rex_mods", RexModsConfig()) { icon = Icons.Default.AutoAwesome }
     val downloader = container("downloader", DownloaderConfig()) { icon = Icons.Default.Download }
     val userInterface = container("user_interface", UserInterfaceTweaks()) { icon = Icons.Default.RemoveRedEye }
     val messaging = container("messaging", MessagingTweaks()) { icon = Icons.AutoMirrored.Default.Send }
