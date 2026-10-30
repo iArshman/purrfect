@@ -98,6 +98,8 @@ class FeatureManager(
             COFOverride(),
             UnsaveableMessages(),
             SendOverride(),
+            AutoSendSnapToAll(),
+            AutoFriendShortcuts(),
             UnlimitedSnapViewTime(),
             BypassVideoLengthRestriction(),
             MediaUploadQualityOverride(),

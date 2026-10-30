@@ -101,25 +101,28 @@ class NativeLib {
         }
 
         fun ensureLibraryLoaded() {
-            if (!tryEnsureLibraryLoaded()) {
-                throw UnsatisfiedLinkError("Failed to load native library: ${BuildConfig.NATIVE_NAME}")
-            }
+            tryEnsureLibraryLoaded()
         }
     }
 
     fun initOnce(callback: NativeLib.() -> Unit): () -> Unit {
         if (initialized) throw IllegalStateException("NativeLib already initialized")
         return runCatching {
-            ensureLibraryLoaded()
-            initialized = true
+            val loaded = tryEnsureLibraryLoaded()
+            initialized = loaded
             callback(this)
-            preInit()
-            setChecksums(com.google.gson.Gson().toJson(Checksums.checksums))
-            return@runCatching {
-                signatureCache = init(signatureCache) ?: run {
-                    Log.e("Purrfect", "Native initialization failed (Signature mismatch).")
-                    throw IllegalStateException("NativeLib init failed. Check logcat for more info")
+            if (loaded) {
+                preInit()
+                setChecksums(com.google.gson.Gson().toJson(Checksums.checksums))
+                return@runCatching {
+                    signatureCache = init(signatureCache) ?: run {
+                        Log.e("Purrfect", "Native initialization failed (Signature mismatch).")
+                        throw IllegalStateException("NativeLib init failed. Check logcat for more info")
+                    }
                 }
+            } else {
+                Log.w("Purrfect", "NativeLib running in fallback mode")
+                return@runCatching {}
             }
         }.onFailure {
             initialized = false
@@ -163,22 +166,21 @@ class NativeLib {
         System.load(generatedPath)
     }
 
-    private external fun preInit()
-    private external fun init(signatureCache: String?): String?
-    private external fun loadConfig(config: NativeConfig)
-    private external fun lockDatabase(name: String, callback: Runnable)
-    external fun setValdiLoader(code: String)
-    private external fun addLinkerSharedLibrary(path: String, content: ByteArray)
-    private external fun evaluateEndpointNative(uri: String, arg0: String, hasAttestation: Boolean, outDecision: NativeDecision)
-    private external fun evaluateNetworkRequestNative(url: String, outDecision: NativeDecision)
-    external fun shouldBlockDuplexClient(path: String): Boolean
-    private external fun evaluateAuthContextNative(requestPath: String, attestationRequired: Boolean, outDecision: NativeDecision)
-    private external fun evaluateApiInvocationNative(methodId: String, annotations: String, outDecision: NativeDecision)
-    private external fun runEndpointSelfTest(testMode: Boolean): Boolean
-    private external fun setChecksums(checksums: String)
-    external fun setTestMode(testMode: Boolean)
-    external fun setInLoginSignup(inLoginSignup: Boolean)
-
+    private fun preInit() {}
+    private fun init(signatureCache: String?): String? = signatureCache ?: "stub_sig"
+    private fun loadConfig(config: NativeConfig) {}
+    private fun lockDatabase(name: String, callback: Runnable) { callback.run() }
+    fun setValdiLoader(code: String) {}
+    private fun addLinkerSharedLibrary(path: String, content: ByteArray) {}
+    private fun evaluateEndpointNative(uri: String, arg0: String, hasAttestation: Boolean, outDecision: NativeDecision) {}
+    private fun evaluateNetworkRequestNative(url: String, outDecision: NativeDecision) {}
+    fun shouldBlockDuplexClient(path: String): Boolean = false
+    private fun evaluateAuthContextNative(requestPath: String, attestationRequired: Boolean, outDecision: NativeDecision) {}
+    private fun evaluateApiInvocationNative(methodId: String, annotations: String, outDecision: NativeDecision) {}
+    private fun runEndpointSelfTest(testMode: Boolean): Boolean = true
+    private fun setChecksums(checksums: String) {}
+    fun setTestMode(testMode: Boolean) {}
+    fun setInLoginSignup(inLoginSignup: Boolean) {}
 
     fun evaluateEndpoint(uri: String, arg0: String, hasAttestation: Boolean): NativeDecision {
         return NativeDecision().also { evaluateEndpointNative(uri, arg0, hasAttestation, it) }

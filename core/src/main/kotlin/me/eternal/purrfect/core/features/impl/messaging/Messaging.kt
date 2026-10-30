@@ -338,7 +338,9 @@ class Messaging : Feature("Messaging") {
         onNextActivityCreate {
             context.classCache.conversationManager.apply {
                 hook("enterConversation", HookStage.BEFORE) { param ->
-                    openedConversationUUID = SnapUUID(param.arg(0))
+                    val convUuid = SnapUUID(param.arg(0))
+                    openedConversationUUID = convUuid
+                    AutoFriendShortcuts.checkAndApplyOnEnterConversation(context, convUuid.toString())
                     if (context.config.messaging.bypassMessageRetentionPolicy.get()) {
                         val callback = param.argNullable<Any>(2) ?: return@hook
                         callback::class.java.methods.firstOrNull { it.name == "onSuccess" }?.invoke(callback)

@@ -3,12 +3,7 @@ plugins {
     alias(libs.plugins.androidApplication) apply false
     alias(libs.plugins.androidLibrary) apply false
     alias(libs.plugins.compose.compiler) apply false
-    alias(libs.plugins.rust.android) apply false
 }
-
-// Remove these lines:
-// var versionName = "1.0.0"
-// var versionCode = 210
 
 import org.gradle.api.provider.Property
 import org.gradle.api.DefaultTask
@@ -36,15 +31,10 @@ tasks.register<GetVersionTask>("getVersion") {
 rootProject.ext.set("appVersionName", providers.gradleProperty("APP_VERSION_NAME").orElse("1.7.6").get())
 rootProject.ext.set("appVersionCode", providers.gradleProperty("APP_VERSION_CODE").orElse("331").get().toInt())
 rootProject.ext.set("applicationId", "me.eternal.purrfect")
-// Retrieve the Git Commit SHA to use as a deterministic identifier for native linking
-val gitCommit = try {
-    val proc = java.lang.Runtime.getRuntime().exec(arrayOf("git", "rev-parse", "--short", "HEAD"))
-    proc.waitFor()
-    val text = proc.inputStream.bufferedReader().readText().trim()
-    if (text.isEmpty()) "static_baseline" else text
-} catch (e: Exception) {
-    "static_baseline"
-}
+val gitCommit = providers.environmentVariable("GIT_COMMIT")
+    .orElse(providers.environmentVariable("GITHUB_SHA"))
+    .orElse("static_baseline")
+    .get()
 
 rootProject.ext.set(
     "buildHash",

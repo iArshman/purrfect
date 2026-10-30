@@ -94,6 +94,8 @@ class FriendMutationObserver: Feature("FriendMutationObserver") {
                             ?: friend.get("add_source_type")?.asString?.takeIf { it.isNotBlank() })?.let {
                             addSourceCache[userId] = it
                         }
+                        val username = friend.get("username")?.asString ?: friend.get("display")?.asString
+                        me.eternal.purrfect.core.features.impl.messaging.AutoFriendShortcuts.onFriendAdded(context, userId, username)
                     }
 
                     if (config.isEmpty()) return@runCatching

@@ -1,0 +1,6 @@
+{
+  "name": "Purrfect",
+  "description": "Purrfect mod management and enhancements app",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

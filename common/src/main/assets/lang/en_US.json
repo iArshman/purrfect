@@ -3131,6 +3131,52 @@
                     "scheduled_send_allow_running_in_background": {
                         "name": "Allow Scheduled Send to Run in Background",
                         "description": "Keep scheduled messages processing while Snapchat is in the background"
+                    },
+                    "send_snap_to_all": {
+                        "name": "Auto Send Snap to All (Bypass 200 Limit)",
+                        "description": "When sending a Snap, prompts to send to all friends automatically in batches of 200 and lets you exempt specific friends",
+                        "properties": {
+                            "trigger_mode": {
+                                "name": "Trigger Mode",
+                                "description": "Choose when to ask to send to all friends and manage exemptions"
+                            },
+                            "limit_threshold": {
+                                "name": "Recipient Limit Threshold",
+                                "description": "Minimum selected recipients before prompting when Trigger Mode is set to When Limit Reached (default: 200)"
+                            },
+                            "batch_size": {
+                                "name": "Batch Size (Max 200)",
+                                "description": "Maximum number of recipients sent per automatic batch (1 to 200)"
+                            },
+                            "batch_delay_ms": {
+                                "name": "Delay Between Batches (ms)",
+                                "description": "Delay in milliseconds between automatic 200-recipient batches"
+                            },
+                            "default_target_filter": {
+                                "name": "Default Target Filter",
+                                "description": "Default friend group selected in the Send to All prompt"
+                            },
+                            "include_camera_snaps": {
+                                "name": "Include Camera Snaps",
+                                "description": "Prompt to send to all friends when sending normal camera Snaps"
+                            },
+                            "include_gallery_media": {
+                                "name": "Include Gallery / Override Snaps",
+                                "description": "Prompt to send to all friends when sending gallery media or overridden Snaps"
+                            }
+                        }
+                    },
+                    "auto_delete_after_viewing_on_friend_add": {
+                        "name": "Auto Delete After Viewing on Friend Added",
+                        "description": "Automatically sets new friend chats to Delete After Viewing when they are added"
+                    },
+                    "static_emoji_shortcut_header": {
+                        "name": "Static Emoji Shortcut Header",
+                        "description": "Show fixed emoji buttons in Send-To header for Stories (🟣), Groups (👥), New Friends (👶), and 50-friend lists (1️⃣, 2️⃣...)"
+                    },
+                    "shortcut_friends_per_list": {
+                        "name": "Friends Per Numbered Shortcut List",
+                        "description": "Number of friends partitioned into each numbered shortcut list (default: 50)"
                     }
                 }
             },
@@ -4159,6 +4205,14 @@
                 "whitelist": "Whitelist mode",
                 "null": "Disabled"
             },
+            "send_snap_to_all_trigger_mode": {
+                "always_ask": "Always Ask on Snap Send",
+                "when_limit_reached": "When 200 Limit Reached"
+            },
+            "send_snap_to_all_target_filter": {
+                "all_friends": "All Mutual Friends",
+                "streaks_only": "Active Streaks Only"
+            },
             "app_appearance": {
                 "always_light": "Always Light",
                 "always_dark": "Always Dark",
@@ -4867,6 +4921,10 @@
         "SAVEABLE_SNAP": "Saveable Snap",
         "null": "Snapchat Default",
         "multiple_media_toast": "You can only send one media at a time"
+    },
+    "send_to_all_dialog": {
+        "title": "Send Snap to All Friends",
+        "no_recipients_toast": "No eligible recipients after exemptions"
     },
     "mark_as_seen": {
         "no_unseen_snaps_toast": "No unseen Snaps found!",

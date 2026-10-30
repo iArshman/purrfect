@@ -323,7 +323,30 @@ class MessagingTweaks : ConfigContainer() {
         val includeCameraSnaps = boolean("include_camera_snaps", false) { requireRestart() }
     }
 
+    class SendSnapToAllConfig : ConfigContainer(hasGlobalState = true) {
+        val triggerMode = unique("trigger_mode", "always_ask", "when_limit_reached") {
+            customOptionTranslationPath = "features.options.send_snap_to_all_trigger_mode"
+            addFlags(ConfigFlag.NO_DISABLE_KEY)
+        }.apply { set("always_ask") }
+        val limitThreshold = integer("limit_threshold", defaultValue = 200) {
+            inputCheck = { it.toIntOrNull()?.coerceIn(1, 200) != null }
+        }
+        val batchSize = integer("batch_size", defaultValue = 200) {
+            inputCheck = { it.toIntOrNull()?.coerceIn(1, 200) != null }
+        }
+        val batchDelayMs = integer("batch_delay_ms", defaultValue = 1000) {
+            inputCheck = { it.toIntOrNull()?.coerceIn(0, 60000) != null }
+        }
+        val defaultTargetFilter = unique("default_target_filter", "all_friends", "streaks_only") {
+            customOptionTranslationPath = "features.options.send_snap_to_all_target_filter"
+            addFlags(ConfigFlag.NO_DISABLE_KEY)
+        }.apply { set("all_friends") }
+        val includeCameraSnaps = boolean("include_camera_snaps", defaultValue = true)
+        val includeGalleryMedia = boolean("include_gallery_media", defaultValue = true)
+    }
+
     val galleryMediaSendOverride = container("gallery_media_send_override", GalleryMediaSendOverrideConfig()) { requireRestart() }
+    val sendSnapToAll = container("send_snap_to_all", SendSnapToAllConfig()) { requireRestart() }.apply { globalState = true }
     val scheduledSendAllowRunningInBackground = boolean("scheduled_send_allow_running_in_background", false)
     val stripMediaMetadata = multiple("strip_media_metadata", "hide_caption_text", "hide_snap_filters", "hide_extras", "remove_audio_note_duration", "remove_audio_note_transcript_capability") { requireRestart() }
     val bypassMessageRetentionPolicy = boolean("bypass_message_retention_policy") { addNotices(FeatureNotice.UNSTABLE); requireRestart() }
@@ -332,6 +355,11 @@ class MessagingTweaks : ConfigContainer() {
     val doubleTapChatAction = unique("double_tap_chat_action", "like_message", "copy_text", "delete_message", "mark_as_read", "custom_emoji_reaction") { requireRestart() }
     val doubleTapChatActionCustomEmoji = string("double_tap_chat_action_custom_emoji") {
         inputCheck = { it.length == 2 && it.toByteArray(Charsets.UTF_8).size >= 4 } }
+    val autoDeleteAfterViewingOnFriendAdd = boolean("auto_delete_after_viewing_on_friend_add", defaultValue = true)
+    val staticEmojiShortcutHeader = boolean("static_emoji_shortcut_header", defaultValue = true)
+    val shortcutFriendsPerList = integer("shortcut_friends_per_list", defaultValue = 50) {
+        inputCheck = { it.toIntOrNull()?.coerceIn(5, 200) != null }
+    }
     val autoReply = container("auto_reply", AutoReplyConfig()) { requireRestart() }
     val autoDeleteSentMessages = container("auto_delete_sent_messages", AutoDeleteSentMessagesConfig()) { requireRestart() }
     

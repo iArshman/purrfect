@@ -255,4 +255,63 @@ class ConversationManager(
             .override("onError") { onError(it.arg<Any>(0).toString()) }.build()
         )
     }
+
+    fun updateConversationRetentionPolicy(
+        conversationId: String,
+        deleteAfterViewing: Boolean = true,
+        onSuccess: () -> Unit = {},
+        onError: (error: String) -> Unit = {}
+    ) {
+        val cm = instanceNonNull()
+        val convUuid = conversationId.toSnapUUID().instanceNonNull()
+
+        val method = cm.javaClass.methods.firstOrNull { m ->
+            m.name.contains("retention", ignoreCase = true)
+        } ?: cm.javaClass.methods.firstOrNull { m ->
+            m.parameterCount == 3 &&
+            m.parameterTypes[0].name.contains("UUID") &&
+            m.parameterTypes[1].isEnum &&
+            m.parameterTypes[2].name.endsWith("Callback")
+        }
+
+        if (method == null) {
+            context.log.warn("updateConversationRetentionPolicy: retention method not found on ConversationManager")
+            onError("Retention method not found")
+            return
+        }
+
+        val enumType = method.parameterTypes[1]
+        val enumConstants = enumType.enumConstants as? Array<out Enum<*>> ?: emptyArray()
+
+        val selectedPolicy = if (deleteAfterViewing) {
+            enumConstants.firstOrNull { constant ->
+                val name = constant.name.uppercase()
+                name.contains("VIEW") || name.contains("IMMEDIAT") || name.contains("ZERO") || name.contains("READ")
+            } ?: enumConstants.firstOrNull()
+        } else {
+            enumConstants.firstOrNull { constant ->
+                val name = constant.name.uppercase()
+                name.contains("24") || name.contains("TWENTY") || name.contains("HOUR")
+            } ?: enumConstants.lastOrNull()
+        }
+
+        if (selectedPolicy == null) {
+            context.log.warn("updateConversationRetentionPolicy: enum constant not found in ${enumType.name}")
+            onError("Retention enum constant not found")
+            return
+        }
+
+        val callback = CallbackBuilder(getCallbackClass("Callback"))
+            .override("onSuccess") { onSuccess() }
+            .override("onError") { onError(it.arg<Any>(0).toString()) }
+            .build()
+
+        runCatching {
+            method.invoke(cm, convUuid, selectedPolicy, callback)
+            context.log.info("updateConversationRetentionPolicy invoked for $conversationId with $selectedPolicy")
+        }.onFailure {
+            context.log.error("Failed to invoke retention method ${method.name}", it)
+            onError(it.message ?: "Failed to invoke retention method")
+        }
+    }
 }
