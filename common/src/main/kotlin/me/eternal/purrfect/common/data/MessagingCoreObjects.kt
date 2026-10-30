@@ -132,6 +132,9 @@ data class FriendStreaks(
     val expirationTimestamp: Long,
     val length: Int
 ): Parcelable {
+    val isExpired: Boolean
+        get() = expirationTimestamp <= System.currentTimeMillis()
+
     fun hoursLeft() = (expirationTimestamp - System.currentTimeMillis()) / 1000 / 60 / 60
 
     fun isAboutToExpire(expireHours: Int) = (expirationTimestamp - System.currentTimeMillis()).let {
